@@ -51,3 +51,33 @@ Runs against a temporary SQLite file (created fresh per run, cleaned up after), 
 **POC + traveller-link path**: Raise Request → pick "Team POC (IYC)" → fill in POC details and add 2–3 traveller rows (try a mix of Train/Flight/bus modes) → submit. You'll land on a share screen listing each traveller's personal upload link — open one, confirm the read-only trip summary looks right, and submit an ID. Back in the queue, that traveller's ID status should flip from "Awaiting traveller" to "Received" and show a masked ID number (e.g. `XXXX-XXXX-1234`).
 
 The Travel Desk view links to an admin screen for managing the RecommendedTrains/RecommendedFlights reference lists that feed the "preferred train/flight" dropdown.
+
+## Deploying to Fly.io
+
+The app is a single Docker container plus one persistent volume (for the SQLite file and uploaded ID images) — Fly's free allowance covers this. `MKN_DATA_DIR` and `MKN_UPLOAD_DIR` (read by `server/lib/paths.js`) point the app at the mounted volume instead of the repo checkout.
+
+1. Install flyctl and sign in:
+   ```bash
+   curl -L https://fly.io/install.sh | sh
+   fly auth login
+   ```
+2. In `fly.toml`, change `app = "mkn-stay-travel"` to a globally-unique name (Fly app names are global across all users).
+3. Create the app and its persistent volume (must be in the same region as `primary_region` in `fly.toml`, default `sin` = Singapore — change both if you want a different region):
+   ```bash
+   fly apps create <your-app-name>
+   fly volumes create mkn_data --region sin --size 1
+   ```
+4. Deploy (this builds the Dockerfile — either locally via Docker, or on Fly's remote builder if you don't have Docker installed, no extra setup needed either way):
+   ```bash
+   fly deploy
+   ```
+5. Seed the reference tables on the deployed instance (one-off command against the running machine):
+   ```bash
+   fly ssh console -C "node server/seed.js"
+   ```
+6. `fly open` to view it, or grab the URL with `fly status`.
+
+Notes:
+- `auto_stop_machines`/`min_machines_running = 0` in `fly.toml` let the machine scale to zero when idle, which keeps it within the free allowance — the first request after idling will be slower (cold start) while it spins back up.
+- Fly's free allowance has required a card on file since 2024 pricing changes; it isn't billed unless you exceed it, but confirm current terms on fly.io before deploying.
+- To redeploy after code changes, just run `fly deploy` again — the volume (and its data) persists across deploys.

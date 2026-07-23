@@ -1,0 +1,32 @@
+# Fly.io app config. Before first deploy:
+#   1. fly auth login
+#   2. Change `app` below to a globally-unique name (or run `fly apps create <name>` first)
+#   3. fly volumes create mkn_data --region sin --size 1
+#   4. fly deploy
+#
+# See README.md "Deploying to Fly.io" for the full walkthrough.
+
+app = "mkn-stay-travel"
+primary_region = "sin"
+
+[build]
+
+[env]
+  PORT = "3000"
+  MKN_DATA_DIR = "/data"
+  MKN_UPLOAD_DIR = "/data/uploads"
+
+[[mounts]]
+  source = "mkn_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

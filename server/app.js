@@ -5,13 +5,14 @@ const requestsRouter = require('./routes/requests');
 const trainsRouter = require('./routes/trains');
 const flightsRouter = require('./routes/flights');
 const { requestLogger, notFoundHandler, errorHandler } = require('./middleware/errorHandler');
+const { UPLOAD_DIR } = require('./lib/paths');
 
 const app = express();
 
 app.use(express.json());
 app.use(requestLogger);
 
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use('/uploads', express.static(UPLOAD_DIR));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.use('/api/requests', requestsRouter);
