@@ -1,4 +1,4 @@
-const db = require('./db');
+const { supabase } = require('./supabase');
 
 const trains = [
   { train: '12658 · Bengaluru Mail', route: 'Chennai to SBC', arrival: 'arrives 06:30', recommended: 'Yes' },
@@ -12,18 +12,21 @@ const flights = [
   { flight: 'UK-812', airline: 'Vistara', arrival: 'arrives BLR 14:10', recommended: null },
 ];
 
-const insertTrain = db.prepare(
-  'INSERT OR IGNORE INTO recommended_trains (train, route, arrival, recommended) VALUES (@train, @route, @arrival, @recommended)'
-);
-const insertFlight = db.prepare(
-  'INSERT OR IGNORE INTO recommended_flights (flight, airline, arrival, recommended) VALUES (@flight, @airline, @arrival, @recommended)'
-);
+async function seed() {
+  const { error: trainsError } = await supabase
+    .from('mkn_recommended_trains')
+    .upsert(trains, { onConflict: 'train', ignoreDuplicates: true });
+  if (trainsError) throw trainsError;
 
-const seed = db.transaction(() => {
-  for (const t of trains) insertTrain.run(t);
-  for (const f of flights) insertFlight.run(f);
+  const { error: flightsError } = await supabase
+    .from('mkn_recommended_flights')
+    .upsert(flights, { onConflict: 'flight', ignoreDuplicates: true });
+  if (flightsError) throw flightsError;
+
+  console.log(`Seeded ${trains.length} trains and ${flights.length} flights.`);
+}
+
+seed().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
-
-seed();
-
-console.log(`Seeded ${trains.length} trains and ${flights.length} flights.`);

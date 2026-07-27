@@ -1,29 +1,35 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const os = require('node:os');
 
-const dbFile = path.join(os.tmpdir(), `mkn-test-${process.pid}-${Date.now()}.db`);
-process.env.MKN_DB_PATH = dbFile;
-
-const request = require('supertest');
+// These are integration tests against the live Supabase project — there's no
+// local embedded DB anymore (Postgres via Supabase, not SQLite), so
+// SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY must point at a reachable project.
 const app = require('../server/app');
-const db = require('../server/db');
+const { supabase, ID_UPLOADS_BUCKET } = require('../server/supabase');
 
-db.prepare('INSERT INTO recommended_trains (train, route, arrival, recommended) VALUES (?, ?, ?, ?)')
-  .run('12658 · Bengaluru Mail', 'Chennai to SBC', 'arrives 06:30', 'Yes');
-db.prepare('INSERT INTO recommended_flights (flight, airline, arrival, recommended) VALUES (?, ?, ?, ?)')
-  .run('6E-455', 'IndiGo', 'arrives BLR 08:20', 'Yes');
+const createdRequestIds = [];
 
-test.after(() => {
-  db.close();
-  for (const ext of ['', '-wal', '-shm']) {
-    try { fs.unlinkSync(dbFile + ext); } catch (_err) { /* already gone */ }
-  }
+test.after(async () => {
+  if (!createdRequestIds.length) return;
+
+  const { data: rows } = await supabase
+    .from('mkn_requests')
+    .select('id_image_path')
+    .in('request_id', createdRequestIds);
+  const paths = (rows || []).map((r) => r.id_image_path).filter(Boolean);
+  if (paths.length) await supabase.storage.from(ID_UPLOADS_BUCKET).remove(paths);
+
+  await supabase.from('mkn_requests').delete().in('request_id', createdRequestIds);
 });
 
+const request = require('supertest');
+
 const fakeIdImage = () => Buffer.from('fake id image bytes');
+
+function trackCreated(id) {
+  if (id) createdRequestIds.push(id);
+  return id;
+}
 
 test('rejects Train mode without a last-mile choice', async () => {
   const res = await request(app)
@@ -39,6 +45,7 @@ test('rejects Train mode without a last-mile choice', async () => {
     .field('idType', 'Aadhaar')
     .field('idNumber', '123456789012')
     .attach('idImage', fakeIdImage(), { filename: 'id.jpg', contentType: 'image/jpeg' });
+  trackCreated(res.body && res.body.id);
   assert.equal(res.status, 400);
 });
 
@@ -57,6 +64,7 @@ test('Flight mode always resolves To to the fixed arrival airport, ignoring clie
     .field('idType', 'Aadhaar')
     .field('idNumber', '123456789013')
     .attach('idImage', fakeIdImage(), { filename: 'id.jpg', contentType: 'image/jpeg' });
+  trackCreated(res.body && res.body.id);
   assert.equal(res.status, 201);
   assert.equal(res.body.to, 'Kempegowda Intl, Bengaluru (BLR)');
 });
@@ -73,6 +81,7 @@ test('list/detail views never expose an unmasked ID number', async () => {
     .field('idType', 'Aadhaar')
     .field('idNumber', '999988887777')
     .attach('idImage', fakeIdImage(), { filename: 'id.jpg', contentType: 'image/jpeg' });
+  trackCreated(created.body && created.body.id);
 
   assert.equal(created.status, 201);
   assert.equal(created.body.idNumberMasked, 'XXXX-XXXX-7777');
@@ -102,6 +111,7 @@ test('POC batch defers ID collection, and the traveller upload link flips status
     });
   assert.equal(batchRes.status, 201);
   const createdRequest = batchRes.body[0];
+  trackCreated(createdRequest && createdRequest.id);
   assert.equal(createdRequest.idStatus, 'Awaiting traveller');
 
   const publicRes = await request(app).get(`/api/requests/${createdRequest.id}/public`);
@@ -131,6 +141,7 @@ test('confirmation reads Confirmed only once ID + stay + travel are all done', a
     .field('idNumber', '111122223333')
     .attach('idImage', fakeIdImage(), { filename: 'id.jpg', contentType: 'image/jpeg' });
   const id = createRes.body.id;
+  trackCreated(id);
   assert.equal(createRes.body.confirmedStatus, 'In progress');
 
   await request(app).patch(`/api/requests/${id}/stay`).send({ stayAllocation: 'Block A · Bed 1' });
