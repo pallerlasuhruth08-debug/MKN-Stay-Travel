@@ -1,10 +1,5 @@
 node_modules/
-data/*.db
-data/*.db-journal
-data/*.db-wal
-data/*.db-shm
-uploads/*
-!uploads/.gitkeep
-!data/.gitkeep
 *.log
 .DS_Store
+.env
+.vercel

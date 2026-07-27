@@ -1,10 +1,12 @@
 # Fly.io app config. Before first deploy:
 #   1. fly auth login
 #   2. Change `app` below to a globally-unique name (or run `fly apps create <name>` first)
-#   3. fly volumes create mkn_data --region sin --size 1
+#   3. fly secrets set SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=...
 #   4. fly deploy
 #
-# See README.md "Deploying to Fly.io" for the full walkthrough.
+# See README.md "Deploying" for the full walkthrough. The app is stateless
+# (data lives in Supabase Postgres + Storage, not on local disk), so no
+# persistent volume is needed here.
 
 app = "mkn-stay-travel"
 primary_region = "sin"
@@ -13,12 +15,6 @@ primary_region = "sin"
 
 [env]
   PORT = "3000"
-  MKN_DATA_DIR = "/data"
-  MKN_UPLOAD_DIR = "/data/uploads"
-
-[[mounts]]
-  source = "mkn_data"
-  destination = "/data"
 
 [http_service]
   internal_port = 3000

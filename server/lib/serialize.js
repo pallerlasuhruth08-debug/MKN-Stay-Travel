@@ -1,3 +1,4 @@
+const { supabase, ID_UPLOADS_BUCKET } = require('../supabase');
 const { maskIdNumber } = require('./mask');
 
 // This is the ONLY place allowed to read row.id_number or row.id_image_path.
@@ -5,9 +6,17 @@ const { maskIdNumber } = require('./mask');
 // masking and the derived confirmation status can never be forgotten or
 // implemented differently in two places.
 
-function imageUrl(idImagePath) {
+const SIGNED_URL_TTL_SECONDS = 3600;
+
+// The bucket is private, so every access gets a freshly signed, time-limited
+// URL rather than a stable public link to an Aadhaar/passport image.
+async function imageUrl(idImagePath) {
   if (!idImagePath) return null;
-  return '/uploads/' + idImagePath;
+  const { data, error } = await supabase.storage
+    .from(ID_UPLOADS_BUCKET)
+    .createSignedUrl(idImagePath, SIGNED_URL_TTL_SECONDS);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 function base(row) {
@@ -49,7 +58,7 @@ function toListItem(row) {
 
 // Single-request detail (coordinator expand, confirmation view) — masked ID
 // number plus the image URL, still never the raw ID number.
-function toDetail(row) {
+async function toDetail(row) {
   return {
     ...base(row),
     phone: row.phone,
@@ -57,7 +66,7 @@ function toDetail(row) {
     pocPhone: row.poc_phone,
     pocEmail: row.poc_email,
     idNumberMasked: maskIdNumber(row.id_type, row.id_number),
-    idImageUrl: imageUrl(row.id_image_path),
+    idImageUrl: await imageUrl(row.id_image_path),
     uploadUrl: '/#/upload/' + row.request_id,
   };
 }

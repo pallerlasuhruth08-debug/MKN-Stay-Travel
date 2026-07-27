@@ -1,23 +1,14 @@
-const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
-const { UPLOAD_DIR } = require('../lib/paths');
-
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'application/pdf']);
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${uuidv4()}${ext}`);
-  },
-});
-
+// Memory storage: Vercel functions have no writable persistent disk, so the
+// file is held in req.file.buffer and uploaded straight to Supabase Storage
+// by the route handler instead of being written to a local uploads/ dir.
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (!ALLOWED_MIME.has(file.mimetype)) {
@@ -29,4 +20,10 @@ const upload = multer({
   },
 });
 
+function storageObjectName(originalname) {
+  const ext = path.extname(originalname).toLowerCase();
+  return `${uuidv4()}${ext}`;
+}
+
 module.exports = upload;
+module.exports.storageObjectName = storageObjectName;

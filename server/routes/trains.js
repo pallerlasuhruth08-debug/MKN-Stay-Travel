@@ -1,49 +1,82 @@
 const express = require('express');
-const db = require('../db');
+const { supabase } = require('../supabase');
 const { ValidationError } = require('../lib/validators');
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
-  res.json(db.prepare('SELECT * FROM recommended_trains ORDER BY recommended DESC, train ASC').all());
+router.get('/', async (req, res, next) => {
+  try {
+    const { data, error } = await supabase
+      .from('mkn_recommended_trains')
+      .select('*')
+      .order('recommended', { ascending: false })
+      .order('train', { ascending: true });
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
 });
 
-router.post('/', (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const { train, route, arrival, recommended } = req.body || {};
     if (!train || !String(train).trim()) throw new ValidationError('train is required.');
     if (!route || !String(route).trim()) throw new ValidationError('route is required.');
-    db.prepare(
-      'INSERT INTO recommended_trains (train, route, arrival, recommended) VALUES (?, ?, ?, ?)'
-    ).run(String(train).trim(), String(route).trim(), arrival || null, recommended === 'Yes' ? 'Yes' : null);
-    res.status(201).json(db.prepare('SELECT * FROM recommended_trains WHERE train = ?').get(train));
+
+    const { data, error } = await supabase
+      .from('mkn_recommended_trains')
+      .insert({
+        train: String(train).trim(),
+        route: String(route).trim(),
+        arrival: arrival || null,
+        recommended: recommended === 'Yes' ? 'Yes' : null,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    res.status(201).json(data);
   } catch (err) {
     next(err);
   }
 });
 
-router.put('/:train', (req, res, next) => {
+router.put('/:train', async (req, res, next) => {
   try {
-    const existing = db.prepare('SELECT * FROM recommended_trains WHERE train = ?').get(req.params.train);
+    const { data: existing, error: fetchError } = await supabase
+      .from('mkn_recommended_trains')
+      .select('*')
+      .eq('train', req.params.train)
+      .maybeSingle();
+    if (fetchError) throw fetchError;
     if (!existing) return res.status(404).json({ error: 'Train not found' });
+
     const { route, arrival, recommended } = req.body || {};
-    db.prepare(
-      'UPDATE recommended_trains SET route = ?, arrival = ?, recommended = ? WHERE train = ?'
-    ).run(
-      route || existing.route,
-      arrival !== undefined ? arrival : existing.arrival,
-      recommended === 'Yes' ? 'Yes' : null,
-      req.params.train
-    );
-    res.json(db.prepare('SELECT * FROM recommended_trains WHERE train = ?').get(req.params.train));
+    const { data, error } = await supabase
+      .from('mkn_recommended_trains')
+      .update({
+        route: route || existing.route,
+        arrival: arrival !== undefined ? arrival : existing.arrival,
+        recommended: recommended === 'Yes' ? 'Yes' : null,
+      })
+      .eq('train', req.params.train)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
   } catch (err) {
     next(err);
   }
 });
 
-router.delete('/:train', (req, res) => {
-  db.prepare('DELETE FROM recommended_trains WHERE train = ?').run(req.params.train);
-  res.status(204).end();
+router.delete('/:train', async (req, res, next) => {
+  try {
+    const { error } = await supabase.from('mkn_recommended_trains').delete().eq('train', req.params.train);
+    if (error) throw error;
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

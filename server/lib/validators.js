@@ -1,4 +1,4 @@
-const db = require('../db');
+const { supabase } = require('../supabase');
 const { STATIONS, FLIGHT_ARRIVAL_AIRPORT, ORGANIZED_BUS_FROM, SSB } = require('./stations');
 
 const TRAVEL_MODES = ['Train', 'Flight', 'Organized bus (IYC to SSB)', 'Dedicated team bus (by SSB)'];
@@ -69,15 +69,16 @@ function validateLastMile(travelMode, lastMile) {
 
 // Enforces "preferred option must be a real recommended train/flight, or the
 // no-preference sentinel, or blank" — looked up live, not just trusted.
-function validatePreferredOption(travelMode, preferredOption) {
+async function validatePreferredOption(travelMode, preferredOption) {
   const value = String(preferredOption || '').trim();
   if (!needsLastMile(travelMode)) return null;
   if (!value || value === NO_PREFERENCE) return value || null;
 
-  const table = travelMode === 'Train' ? 'recommended_trains' : 'recommended_flights';
+  const table = travelMode === 'Train' ? 'mkn_recommended_trains' : 'mkn_recommended_flights';
   const key = travelMode === 'Train' ? 'train' : 'flight';
-  const row = db.prepare(`SELECT 1 FROM ${table} WHERE ${key} = ?`).get(value);
-  if (!row) {
+  const { data, error } = await supabase.from(table).select(key).eq(key, value).maybeSingle();
+  if (error) throw error;
+  if (!data) {
     throw new ValidationError(`Preferred option "${value}" is not a known recommended ${travelMode.toLowerCase()}.`);
   }
   return value;
