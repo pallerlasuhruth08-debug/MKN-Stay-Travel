@@ -56,15 +56,26 @@ The Travel Desk view links to an admin screen for managing the RecommendedTrains
 
 The app is a single Docker container plus one persistent volume (for the SQLite file and uploaded ID images) — Fly's free allowance covers this. `MKN_DATA_DIR` and `MKN_UPLOAD_DIR` (read by `server/lib/paths.js`) point the app at the mounted volume instead of the repo checkout.
 
+### Automatic deploys via GitHub Actions
+
+`.github/workflows/fly-deploy.yml` deploys on every push to `build/travel-stay-app` (and can be triggered manually from the Actions tab). It needs one repo secret:
+
+1. Create a deploy token: `fly tokens create deploy -x 999999h -a mkn-stay-travel`
+2. Add it as a repository secret named `FLY_API_TOKEN` (Settings → Secrets and variables → Actions).
+
+The one-time app/volume setup (steps 2–3 below) still has to be done manually before the first deploy — the workflow only runs `flyctl deploy`, it doesn't create the app or volume.
+
+### Manual deploy
+
 1. Install flyctl and sign in:
    ```bash
    curl -L https://fly.io/install.sh | sh
    fly auth login
    ```
-2. In `fly.toml`, change `app = "mkn-stay-travel"` to a globally-unique name (Fly app names are global across all users).
+2. `fly.toml` already sets `app = "mkn-stay-travel"` — if that name is taken on Fly (app names are global across all users), change it here first.
 3. Create the app and its persistent volume (must be in the same region as `primary_region` in `fly.toml`, default `sin` = Singapore — change both if you want a different region):
    ```bash
-   fly apps create <your-app-name>
+   fly apps create mkn-stay-travel
    fly volumes create mkn_data --region sin --size 1
    ```
 4. Deploy (this builds the Dockerfile — either locally via Docker, or on Fly's remote builder if you don't have Docker installed, no extra setup needed either way):
